@@ -1,9 +1,11 @@
+import requests
+
 def model_stealing(path_to_png_file: str):
     SERVER_URL = "[paste server url here]"
     ENDPOINT = "/modelstealing"
     URL = SERVER_URL + ENDPOINT
 
-    TEAM_TOKEN = "[paste your team token here]"
+    TEAM_TOKEN = "X55E27lOG6LS3QRm"
 
     with open(path_to_png_file, "rb") as img_file:
         response = requests.get(

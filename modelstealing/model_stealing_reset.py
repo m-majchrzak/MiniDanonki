@@ -1,9 +1,11 @@
+import requests
+
 def model_stealing_reset():
     SERVER_URL = "[paste server url here]"
     ENDPOINT = "/modelstealing/reset"
     URL = SERVER_URL + ENDPOINT
 
-    TEAM_TOKEN = "[paste your team token here]"
+    TEAM_TOKEN = "X55E27lOG6LS3QRm"
 
     response = requests.post(
         URL, headers={"token": TEAM_TOKEN}

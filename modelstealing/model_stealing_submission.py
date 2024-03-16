@@ -1,9 +1,11 @@
+import requests
+
 def model_stealing_submission(path_to_onnx_file: str):
     SERVER_URL = "[paste server url here]"
     ENDPOINT = "/modelstealing/submit"
     URL = SERVER_URL + ENDPOINT
 
-    TEAM_TOKEN = "[paste your team token here]"
+    TEAM_TOKEN = "X55E27lOG6LS3QRm"
 
     with open(path_to_onnx_file, "rb") as onnx_file:
         response = requests.post(
