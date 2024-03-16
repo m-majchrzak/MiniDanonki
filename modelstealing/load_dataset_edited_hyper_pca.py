@@ -6,8 +6,11 @@ import random
 from PIL import Image, ImageEnhance, ImageOps
 import matplotlib.pyplot as plt
 from umap import UMAP
-from sklearn.cluster import SpectralClustering
+from sklearn.cluster import KMeans, SpectralClustering
+from sklearn import metrics
+from sklearn.metrics import adjusted_rand_score
 from collections import Counter, defaultdict
+from sklearn.decomposition import PCA
 
 # Set the random seed for all operations
 random_seed = 1613
@@ -91,63 +94,53 @@ def save_cluster_images(images, labels, cluster_number, save_dir, n=100, grid_si
     # Save the grid image
     grid_image.save(os.path.join(save_dir, f'cluster_{cluster_number + 1}.png'))
 
-def umap_visualization_and_spectral_clustering(dataset, output_filename, image_size=(32, 32), n_clusters=4):
-    images, ids, labels = dataset.imgs, dataset.ids, dataset.labels
+
+def calculate_purity(y_true, y_pred):
+    # Calculate the purity, a measurement of how well the clustering reflects the true labels
+    contingency_matrix = metrics.cluster.contingency_matrix(y_true, y_pred)
+    return np.sum(np.amax(contingency_matrix, axis=0)) / np.sum(contingency_matrix)
+
+def evaluate_clustering(labels_true, labels_pred):
+    # Calculate and return purity and adjusted Rand index
+    purity = calculate_purity(labels_true, labels_pred)
+    adjusted_rand = adjusted_rand_score(labels_true, labels_pred)
+    return purity, adjusted_rand
+
+
+def apply_pca_and_clustering(dataset, n_components=50, n_clusters_range=range(3, 10)):
+    images = dataset.imgs
+    ids = dataset.ids
+    labels = dataset.labels
 
     # Ensure all images are of the same size and format
     standardized_images = []
     for img in images:
-        img = random_grayscale(img, 1)
-        standardized_img = img.resize(image_size).convert('RGB')
-        standardized_images.append(standardized_img)
+        standardized_img = img.resize((32, 32)).convert('RGB')  # Confirm size & convert to ensure consistency
+        standardized_images.append(np.array(standardized_img).reshape(-1))  # Flatten the images
 
-    image_vectors = [np.array(image).flatten() for image in standardized_images]
-    image_vectors = np.stack(image_vectors)
+    # Stack images into a large matrix for PCA
+    image_matrix = np.stack(standardized_images)
 
-    # Apply UMAP to reduce the dimensionality to 2D
-    umap_reducer = UMAP(random_state=random_seed)
-    embedding = umap_reducer.fit_transform(image_vectors)
+    # Apply PCA to reduce dimensions
+    pca = PCA(n_components=n_components, random_state=random_seed)
+    reduced_data = pca.fit_transform(image_matrix)
+    
+    # Perform clustering and evaluation for each method and number of clusters
+    results = []
+    for n_clusters in n_clusters_range:
+        for ClusteringMethod in [KMeans, SpectralClustering]:
+            clustering_model = ClusteringMethod(n_clusters=n_clusters, random_state=random_seed)
+            labels_pred = clustering_model.fit_predict(reduced_data)
+            purity, adjusted_rand = evaluate_clustering(labels, labels_pred)
+            results.append({
+                'method': ClusteringMethod.__name__,
+                'n_clusters': n_clusters,
+                'purity': purity,
+                'adjusted_rand': adjusted_rand,
+                'n_components': n_components
+            })
 
-    # Apply Spectral Clustering on the reduced data
-    spectral_clustering = SpectralClustering(n_clusters=n_clusters, random_state=random_seed, assign_labels='discretize')
-    cluster_labels = spectral_clustering.fit_predict(embedding)
-
-    # Correct the clusters so images with the same labels will have same clusters
-    corrected_cluster_labels = correct_cluster_labels(cluster_labels, labels)
-
-    # Plot the results
-    # Plot the original UMAP results
-    plt.figure(figsize=(12, 10))
-    plt.scatter(embedding[:, 0], embedding[:, 1], c=cluster_labels, cmap='Spectral', s=1)
-    plt.title(f'Original UMAP projection of the dataset with {n_clusters} clusters', fontsize=24)
-    plt.xlabel('UMAP dimension 1', fontsize=18)
-    plt.ylabel('UMAP dimension 2', fontsize=18)
-    plt.colorbar()
-    plt.savefig(IMG_DIR + "umap_projection_original.png")
-
-    # Plot the corrected UMAP results
-    plt.figure(figsize=(12, 10))
-    plt.scatter(embedding[:, 0], embedding[:, 1], c=corrected_cluster_labels, cmap='Spectral', s=1)
-    plt.title(f'Corrected UMAP projection of the dataset with {n_clusters} clusters', fontsize=24)
-    plt.xlabel('UMAP dimension 1', fontsize=18)
-    plt.ylabel('UMAP dimension 2', fontsize=18)
-    plt.colorbar()
-    plt.savefig(IMG_DIR + "umap_projection_corrected.png")
-
-    with open(output_filename, 'w') as f:
-        f.write('id,cluster,corrected_cluster,label\n')  # Update header
-        for id, original_cluster, corrected_cluster, label in zip(ids, cluster_labels, corrected_cluster_labels, labels):
-            f.write(f'{id},{original_cluster + 1},{corrected_cluster + 1},{label}\n')
-
-    # Saving images for each original cluster
-    for cluster_number in range(n_clusters):
-        save_cluster_images(images, cluster_labels, cluster_number, os.path.join(IMG_DIR, 'clusters_original'))
-
-    # Saving images for each corrected cluster
-    for cluster_number in range(n_clusters):
-        save_cluster_images(images, corrected_cluster_labels, cluster_number, os.path.join(IMG_DIR, 'clusters_corrected'))
-
-    return corrected_cluster_labels  # In case you want to use the labels later
+    return results
 
 
 def correct_cluster_labels(labels, original_labels):
@@ -171,6 +164,34 @@ def correct_cluster_labels(labels, original_labels):
     corrected_labels = [most_common_cluster[label] for label in original_labels]
 
     return corrected_labels
+
+
+def cluster_and_evaluate(embedding, labels_true, n_clusters_range=range(3, 10)):
+    results = []
+    for n_clusters in n_clusters_range:
+        for ClusteringMethod in [KMeans, SpectralClustering]:
+            # Initialize the clustering method
+            if ClusteringMethod is KMeans:
+                clustering_model = ClusteringMethod(n_clusters=n_clusters, random_state=random_seed)
+            else:
+                clustering_model = ClusteringMethod(n_clusters=n_clusters, random_state=random_seed, assign_labels='discretize')
+
+            # Fit the model and predict clusters
+            labels_pred = clustering_model.fit_predict(embedding)
+
+            # Evaluate the clustering
+            purity, adjusted_rand = evaluate_clustering(labels_true, labels_pred)
+            
+            # Save the results
+            results.append({
+                'method': ClusteringMethod.__name__,
+                'n_clusters': n_clusters,
+                'purity': purity,
+                'adjusted_rand': adjusted_rand
+            })
+    
+    # Return all results
+    return results
 
 
 
@@ -224,7 +245,7 @@ def random_grayscale(image: Image.Image, probability: float = 0.1) -> Image.Imag
 
 def generate_augmentations(image: Image.Image):
     image_hf = random_horizontal_flip(image, 1) # horizontal flipped
-    image_gr = random_grayscale(image, 1) # grayscale
+    image_gr = random_grayscale(image, 1) # greyscale
     image_hf_gr = random_horizontal_flip(image_gr, 1)
     params_lists = [[0, 0, 0], [0, 0, 1], [0, 1, 0], [0, 1, 1],
                     [1, 0, 0], [1, 0, 1], [1, 1, 0], [1, 1, 1]]
@@ -240,10 +261,8 @@ def generate_augmentations(image: Image.Image):
 
 if __name__ == "__main__":
     dataset = torch.load(DATA_DIR + "ModelStealingPub.pt")
-    # print(dataset.ids, dataset.imgs, dataset.labels)
     print("Images number:", len(dataset.ids))
-    # print(type(dataset.imgs[0]))
-    # save_pngs() # uncomment if images not present
-    # visualize_random100(dataset.imgs)
-    
-    umap_visualization_and_spectral_clustering(dataset, IMG_DIR + "umap_spectral_clustering_results.csv")
+    results = apply_pca_and_clustering(dataset)
+    best_result = max(results, key=lambda x: x['purity'])  # or adjusted_rand for Adjusted Rand Index
+    print(f"Best clustering method: {best_result['method']} with {best_result['n_clusters']} clusters, {best_result['n_components']} PCA components")
+    print(f"Purity: {best_result['purity']}, Adjusted Rand Score: {best_result['adjusted_rand']}")

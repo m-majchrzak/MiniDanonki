@@ -6,7 +6,9 @@ import random
 from PIL import Image, ImageEnhance, ImageOps
 import matplotlib.pyplot as plt
 from umap import UMAP
-from sklearn.cluster import SpectralClustering
+from sklearn.cluster import KMeans, SpectralClustering
+from sklearn import metrics
+from sklearn.metrics import adjusted_rand_score
 from collections import Counter, defaultdict
 
 # Set the random seed for all operations
@@ -91,13 +93,25 @@ def save_cluster_images(images, labels, cluster_number, save_dir, n=100, grid_si
     # Save the grid image
     grid_image.save(os.path.join(save_dir, f'cluster_{cluster_number + 1}.png'))
 
-def umap_visualization_and_spectral_clustering(dataset, output_filename, image_size=(32, 32), n_clusters=4):
+
+def calculate_purity(y_true, y_pred):
+    # Calculate the purity, a measurement of how well the clustering reflects the true labels
+    contingency_matrix = metrics.cluster.contingency_matrix(y_true, y_pred)
+    return np.sum(np.amax(contingency_matrix, axis=0)) / np.sum(contingency_matrix)
+
+def evaluate_clustering(labels_true, labels_pred):
+    # Calculate and return purity and adjusted Rand index
+    purity = calculate_purity(labels_true, labels_pred)
+    adjusted_rand = adjusted_rand_score(labels_true, labels_pred)
+    return purity, adjusted_rand
+
+
+def umap_visualization_and_spectral_clustering(dataset, output_filename, image_size=(32, 32), n_clusters=6):
     images, ids, labels = dataset.imgs, dataset.ids, dataset.labels
 
     # Ensure all images are of the same size and format
     standardized_images = []
     for img in images:
-        img = random_grayscale(img, 1)
         standardized_img = img.resize(image_size).convert('RGB')
         standardized_images.append(standardized_img)
 
@@ -141,11 +155,19 @@ def umap_visualization_and_spectral_clustering(dataset, output_filename, image_s
 
     # Saving images for each original cluster
     for cluster_number in range(n_clusters):
-        save_cluster_images(images, cluster_labels, cluster_number, os.path.join(IMG_DIR, 'clusters_original'))
+        save_cluster_images(images, cluster_labels, cluster_number, os.path.join(IMG_DIR, 'clusters_original'), n=100)
 
     # Saving images for each corrected cluster
     for cluster_number in range(n_clusters):
-        save_cluster_images(images, corrected_cluster_labels, cluster_number, os.path.join(IMG_DIR, 'clusters_corrected'))
+        save_cluster_images(images, corrected_cluster_labels, cluster_number, os.path.join(IMG_DIR, 'clusters_corrected'), n=100)
+
+    
+    # Assuming 'embedding' is your UMAP reduced data and 'labels' are your true labels
+    results = cluster_and_evaluate(embedding, dataset.labels)
+    # Find the best result based on purity or adjusted Rand index
+    best_result = max(results, key=lambda x: x['purity'])  # or change 'purity' to 'adjusted_rand' for ARS
+    print(f"Best clustering method: {best_result['method']} with {best_result['n_clusters']} clusters")
+    print(f"Purity: {best_result['purity']}, Adjusted Rand Score: {best_result['adjusted_rand']}")
 
     return corrected_cluster_labels  # In case you want to use the labels later
 
@@ -171,6 +193,34 @@ def correct_cluster_labels(labels, original_labels):
     corrected_labels = [most_common_cluster[label] for label in original_labels]
 
     return corrected_labels
+
+
+def cluster_and_evaluate(embedding, labels_true, n_clusters_range=range(3, 10)):
+    results = []
+    for n_clusters in n_clusters_range:
+        for ClusteringMethod in [KMeans, SpectralClustering]:
+            # Initialize the clustering method
+            if ClusteringMethod is KMeans:
+                clustering_model = ClusteringMethod(n_clusters=n_clusters, random_state=random_seed)
+            else:
+                clustering_model = ClusteringMethod(n_clusters=n_clusters, random_state=random_seed, assign_labels='discretize')
+
+            # Fit the model and predict clusters
+            labels_pred = clustering_model.fit_predict(embedding)
+
+            # Evaluate the clustering
+            purity, adjusted_rand = evaluate_clustering(labels_true, labels_pred)
+            
+            # Save the results
+            results.append({
+                'method': ClusteringMethod.__name__,
+                'n_clusters': n_clusters,
+                'purity': purity,
+                'adjusted_rand': adjusted_rand
+            })
+    
+    # Return all results
+    return results
 
 
 
@@ -224,7 +274,7 @@ def random_grayscale(image: Image.Image, probability: float = 0.1) -> Image.Imag
 
 def generate_augmentations(image: Image.Image):
     image_hf = random_horizontal_flip(image, 1) # horizontal flipped
-    image_gr = random_grayscale(image, 1) # grayscale
+    image_gr = random_grayscale(image, 1) # greyscale
     image_hf_gr = random_horizontal_flip(image_gr, 1)
     params_lists = [[0, 0, 0], [0, 0, 1], [0, 1, 0], [0, 1, 1],
                     [1, 0, 0], [1, 0, 1], [1, 1, 0], [1, 1, 1]]

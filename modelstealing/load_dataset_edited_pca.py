@@ -4,9 +4,9 @@ import numpy as np
 from taskdataset import TaskDataset
 import random
 from PIL import Image, ImageEnhance, ImageOps
-import matplotlib.pyplot as plt
-from umap import UMAP
 from sklearn.cluster import SpectralClustering
+from sklearn.preprocessing import StandardScaler
+from sklearn.decomposition import PCA
 from collections import Counter, defaultdict
 
 # Set the random seed for all operations
@@ -91,63 +91,43 @@ def save_cluster_images(images, labels, cluster_number, save_dir, n=100, grid_si
     # Save the grid image
     grid_image.save(os.path.join(save_dir, f'cluster_{cluster_number + 1}.png'))
 
-def umap_visualization_and_spectral_clustering(dataset, output_filename, image_size=(32, 32), n_clusters=4):
+def pca_and_spectral_clustering(dataset, output_base_filename, image_size=(32, 32), cluster_counts=[5, 6, 7, 8, 9], n_components=50):
     images, ids, labels = dataset.imgs, dataset.ids, dataset.labels
 
-    # Ensure all images are of the same size and format
-    standardized_images = []
-    for img in images:
-        img = random_grayscale(img, 1)
-        standardized_img = img.resize(image_size).convert('RGB')
-        standardized_images.append(standardized_img)
+    # Standardize images
+    standardized_images = [img.resize((32, 32)).convert('RGB') for img in images]
+    image_matrix = np.array([np.array(image).reshape(-1) for image in standardized_images])
+    scaler = StandardScaler()
+    image_matrix_scaled = scaler.fit_transform(image_matrix)
 
-    image_vectors = [np.array(image).flatten() for image in standardized_images]
-    image_vectors = np.stack(image_vectors)
+    # Apply Randomized PCA
+    pca = PCA(n_components=n_components, svd_solver='randomized', random_state=random_seed)
+    reduced_data = pca.fit_transform(image_matrix_scaled)
+    
+    for n_clusters in cluster_counts:
+        print(f'Processing {n_clusters} clusters...')
+        spectral_clustering = SpectralClustering(n_clusters=n_clusters, random_state=random_seed, assign_labels='discretize')
+        original_cluster_labels = spectral_clustering.fit_predict(reduced_data)
+        corrected_cluster_labels = correct_cluster_labels(original_cluster_labels, labels)
 
-    # Apply UMAP to reduce the dimensionality to 2D
-    umap_reducer = UMAP(random_state=random_seed)
-    embedding = umap_reducer.fit_transform(image_vectors)
+        # Count corrections
+        corrections = sum(1 for original, corrected in zip(original_cluster_labels, corrected_cluster_labels) if original != corrected)
+        print(f'Number of corrections for {n_clusters} clusters: {corrections}')
 
-    # Apply Spectral Clustering on the reduced data
-    spectral_clustering = SpectralClustering(n_clusters=n_clusters, random_state=random_seed, assign_labels='discretize')
-    cluster_labels = spectral_clustering.fit_predict(embedding)
+        # Save original and corrected cluster images
+        save_dir_original = os.path.join(IMG_DIR, f'clusters_original_{n_clusters}_pca')
+        save_dir_corrected = os.path.join(IMG_DIR, f'clusters_corrected_{n_clusters}_pca')
+        os.makedirs(save_dir_original, exist_ok=True)
+        os.makedirs(save_dir_corrected, exist_ok=True)
+        save_cluster_images(images, original_cluster_labels, n_clusters, save_dir_original)
+        save_cluster_images(images, corrected_cluster_labels, n_clusters, save_dir_corrected)
 
-    # Correct the clusters so images with the same labels will have same clusters
-    corrected_cluster_labels = correct_cluster_labels(cluster_labels, labels)
-
-    # Plot the results
-    # Plot the original UMAP results
-    plt.figure(figsize=(12, 10))
-    plt.scatter(embedding[:, 0], embedding[:, 1], c=cluster_labels, cmap='Spectral', s=1)
-    plt.title(f'Original UMAP projection of the dataset with {n_clusters} clusters', fontsize=24)
-    plt.xlabel('UMAP dimension 1', fontsize=18)
-    plt.ylabel('UMAP dimension 2', fontsize=18)
-    plt.colorbar()
-    plt.savefig(IMG_DIR + "umap_projection_original.png")
-
-    # Plot the corrected UMAP results
-    plt.figure(figsize=(12, 10))
-    plt.scatter(embedding[:, 0], embedding[:, 1], c=corrected_cluster_labels, cmap='Spectral', s=1)
-    plt.title(f'Corrected UMAP projection of the dataset with {n_clusters} clusters', fontsize=24)
-    plt.xlabel('UMAP dimension 1', fontsize=18)
-    plt.ylabel('UMAP dimension 2', fontsize=18)
-    plt.colorbar()
-    plt.savefig(IMG_DIR + "umap_projection_corrected.png")
-
-    with open(output_filename, 'w') as f:
-        f.write('id,cluster,corrected_cluster,label\n')  # Update header
-        for id, original_cluster, corrected_cluster, label in zip(ids, cluster_labels, corrected_cluster_labels, labels):
-            f.write(f'{id},{original_cluster + 1},{corrected_cluster + 1},{label}\n')
-
-    # Saving images for each original cluster
-    for cluster_number in range(n_clusters):
-        save_cluster_images(images, cluster_labels, cluster_number, os.path.join(IMG_DIR, 'clusters_original'))
-
-    # Saving images for each corrected cluster
-    for cluster_number in range(n_clusters):
-        save_cluster_images(images, corrected_cluster_labels, cluster_number, os.path.join(IMG_DIR, 'clusters_corrected'))
-
-    return corrected_cluster_labels  # In case you want to use the labels later
+        # Write cluster info to CSV
+        output_filename = f'{output_base_filename}_{n_clusters}_pca.csv'
+        with open(output_filename, 'w') as f:
+            f.write('id,original_cluster,corrected_cluster,label\n')
+            for id, original_cluster, corrected_cluster, label in zip(ids, original_cluster_labels, corrected_cluster_labels, labels):
+                f.write(f'{id},{original_cluster + 1},{corrected_cluster + 1},{label}\n')
 
 
 def correct_cluster_labels(labels, original_labels):
@@ -224,7 +204,7 @@ def random_grayscale(image: Image.Image, probability: float = 0.1) -> Image.Imag
 
 def generate_augmentations(image: Image.Image):
     image_hf = random_horizontal_flip(image, 1) # horizontal flipped
-    image_gr = random_grayscale(image, 1) # grayscale
+    image_gr = random_grayscale(image, 1) # greyscale
     image_hf_gr = random_horizontal_flip(image_gr, 1)
     params_lists = [[0, 0, 0], [0, 0, 1], [0, 1, 0], [0, 1, 1],
                     [1, 0, 0], [1, 0, 1], [1, 1, 0], [1, 1, 1]]
@@ -246,4 +226,4 @@ if __name__ == "__main__":
     # save_pngs() # uncomment if images not present
     # visualize_random100(dataset.imgs)
     
-    umap_visualization_and_spectral_clustering(dataset, IMG_DIR + "umap_spectral_clustering_results.csv")
+    pca_and_spectral_clustering(dataset, os.path.join(IMG_DIR, "spectral_clustering_results"), cluster_counts=[5, 6, 7, 8, 9])
