@@ -7,7 +7,7 @@ from PIL import Image, ImageEnhance, ImageOps
 import matplotlib.pyplot as plt
 from umap import UMAP
 from sklearn.cluster import SpectralClustering
-
+from collections import Counter, defaultdict
 
 # Set the random seed for all operations
 random_seed = 1613
@@ -111,25 +111,66 @@ def umap_visualization_and_spectral_clustering(dataset, output_filename, image_s
     spectral_clustering = SpectralClustering(n_clusters=n_clusters, random_state=random_seed, assign_labels='discretize')
     cluster_labels = spectral_clustering.fit_predict(embedding)
 
+    # Correct the clusters so images with the same labels will have same clusters
+    corrected_cluster_labels = correct_cluster_labels(cluster_labels, labels)
+
     # Plot the results
+    # Plot the original UMAP results
     plt.figure(figsize=(12, 10))
     plt.scatter(embedding[:, 0], embedding[:, 1], c=cluster_labels, cmap='Spectral', s=1)
-    plt.title(f'UMAP projection of the dataset with {n_clusters} clusters', fontsize=24)
+    plt.title(f'Original UMAP projection of the dataset with {n_clusters} clusters', fontsize=24)
     plt.xlabel('UMAP dimension 1', fontsize=18)
     plt.ylabel('UMAP dimension 2', fontsize=18)
     plt.colorbar()
-    plt.savefig(IMG_DIR + "umap_projection.png")
+    plt.savefig(IMG_DIR + "umap_projection_original.png")
 
-    # Saving images for each cluster and the mapping of ids to clusters and labels to a CSV file
-    for cluster_number in range(n_clusters):
-        save_cluster_images(images, cluster_labels, cluster_number, os.path.dirname(output_filename), n=100)
+    # Plot the corrected UMAP results
+    plt.figure(figsize=(12, 10))
+    plt.scatter(embedding[:, 0], embedding[:, 1], c=corrected_cluster_labels, cmap='Spectral', s=1)
+    plt.title(f'Corrected UMAP projection of the dataset with {n_clusters} clusters', fontsize=24)
+    plt.xlabel('UMAP dimension 1', fontsize=18)
+    plt.ylabel('UMAP dimension 2', fontsize=18)
+    plt.colorbar()
+    plt.savefig(IMG_DIR + "umap_projection_corrected.png")
 
     with open(output_filename, 'w') as f:
-        f.write('id,cluster,label\n')  # Header
-        for id, cluster_label, label in zip(ids, cluster_labels, labels):
-            f.write(f'{id},{cluster_label + 1},{label}\n')  # Adjusting cluster number for 1-based indexing
+        f.write('id,cluster,corrected_cluster,label\n')  # Update header
+        for id, original_cluster, corrected_cluster, label in zip(ids, cluster_labels, corrected_cluster_labels, labels):
+            f.write(f'{id},{original_cluster + 1},{corrected_cluster + 1},{label}\n')
 
-    return cluster_labels  # In case you want to use the labels later
+    # Saving images for each original cluster
+    for cluster_number in range(n_clusters):
+        save_cluster_images(images, cluster_labels, cluster_number, os.path.join(IMG_DIR, 'clusters_original'), n=100)
+
+    # Saving images for each corrected cluster
+    for cluster_number in range(n_clusters):
+        save_cluster_images(images, corrected_cluster_labels, cluster_number, os.path.join(IMG_DIR, 'clusters_corrected'), n=100)
+
+    return corrected_cluster_labels  # In case you want to use the labels later
+
+
+def correct_cluster_labels(labels, original_labels):
+    """
+    Correct the cluster labels so that all images with the same label are in the same cluster.
+    It assigns them to the cluster where the most images of that label are currently located.
+
+    :param labels: List of assigned cluster labels.
+    :param original_labels: List of original labels for the images.
+    :return: Corrected list of cluster labels.
+    """
+    label_to_cluster = defaultdict(Counter)
+    # Count how many times each label appears in each cluster
+    for label, cluster in zip(original_labels, labels):
+        label_to_cluster[label][cluster] += 1
+
+    # Determine the most common cluster for each label
+    most_common_cluster = {label: clusters.most_common(1)[0][0] for label, clusters in label_to_cluster.items()}
+
+    # Correct the cluster assignments based on the most common cluster for each label
+    corrected_labels = [most_common_cluster[label] for label in original_labels]
+
+    return corrected_labels
+
 
 
 def random_horizontal_flip(image: Image.Image, probability: float = 0.5) -> Image.Image:
@@ -143,7 +184,6 @@ def random_horizontal_flip(image: Image.Image, probability: float = 0.5) -> Imag
     if random.random() < probability:
         return image.transpose(Image.FLIP_LEFT_RIGHT)
     return image
-
 
 def color_jitter(image: Image.Image, brightness: float = 0, contrast: float = 0, saturation: float = 0) -> Image.Image:
     """
@@ -169,7 +209,6 @@ def color_jitter(image: Image.Image, brightness: float = 0, contrast: float = 0,
     
     return image
 
-
 def random_grayscale(image: Image.Image, probability: float = 0.1) -> Image.Image:
     """
     Randomly converts an image to grayscale.
@@ -181,7 +220,6 @@ def random_grayscale(image: Image.Image, probability: float = 0.1) -> Image.Imag
     if random.random() < probability:
         return ImageOps.grayscale(image)
     return image
-
 
 def generate_augmentations(image: Image.Image):
     image_hf = random_horizontal_flip(image, 1) # horizontal flipped
@@ -202,9 +240,9 @@ def generate_augmentations(image: Image.Image):
 if __name__ == "__main__":
     dataset = torch.load(DATA_DIR + "ModelStealingPub.pt")
     # print(dataset.ids, dataset.imgs, dataset.labels)
+    print("Images number:", len(dataset.ids))
     # print(type(dataset.imgs[0]))
-    save_pngs() # uncomment if images not present
-    # print("Images number:", len(dataset.ids))
+    # save_pngs() # uncomment if images not present
     # visualize_random100(dataset.imgs)
     
     umap_visualization_and_spectral_clustering(dataset, IMG_DIR + "umap_spectral_clustering_results.csv")
