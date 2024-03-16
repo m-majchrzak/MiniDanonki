@@ -1,0 +1,4 @@
+1. Wizualizacja 10x10 losowych. Myśl: widzimy dwie-trzy kategorie? Czy więcej?
+2. Zastosowanie UMAP: mamy trzy-cztery kategorie
+3. Kmeans na UMAP + wizualizacje. 6 klas? Spectral clustering jednak lepsze
+4. Dla tych samych labeli, gdzie różne clustery --> wrzuć takie, których kategorii jest najwięcej
