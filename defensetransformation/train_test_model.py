@@ -149,10 +149,10 @@ if __name__ == "__main__":
     
     # Initializing in a separate cell so we can easily add more epochs to the same run
     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-    writer = SummaryWriter('runs/fashion_trainer_{}'.format(timestamp))
+    writer = SummaryWriter('defensetransformation/runs/fashion_trainer_{}'.format(timestamp))
     epoch_number = 0
 
-    EPOCHS = 50
+    EPOCHS = 15
     best_vloss = 1_000_000.
 
     for epoch in range(EPOCHS):
@@ -201,5 +201,7 @@ if __name__ == "__main__":
             f"Test accuracy {np.trace(confusion_matrix) / np.sum(confusion_matrix):.4f}\n"
         )
 
+# test accuracy 0.95
+        
 # saved_model = MLP()
 # saved_model.load_state_dict(torch.load(PATH))
