@@ -2,3 +2,5 @@
 2. Zastosowanie UMAP: mamy trzy-cztery kategorie
 3. Kmeans na UMAP + wizualizacje. 6 klas? Spectral clustering jednak lepsze
 4. Dla tych samych labeli, gdzie różne clustery --> wrzuć takie, których kategorii jest najwięcej
+5. Tuning hyperparametrów: [Kmeans, Spectral] x [3-10 klas] - gdzie najmniej zmian przy korekcji? Tam najlepsze
+6. Ostateczny wybór po obrazkach reprezentatynych i liczbie korekcji

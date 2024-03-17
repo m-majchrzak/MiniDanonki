@@ -91,12 +91,13 @@ def save_cluster_images(images, labels, cluster_number, save_dir, n=100, grid_si
     # Save the grid image
     grid_image.save(os.path.join(save_dir, f'cluster_{cluster_number + 1}.png'))
 
-def umap_visualization_and_spectral_clustering(dataset, output_filename, image_size=(32, 32), n_clusters=6):
+def umap_visualization_and_spectral_clustering(dataset, output_filename, image_size=(32, 32), n_clusters=4):
     images, ids, labels = dataset.imgs, dataset.ids, dataset.labels
 
     # Ensure all images are of the same size and format
     standardized_images = []
     for img in images:
+        img = random_grayscale(img, 1)
         standardized_img = img.resize(image_size).convert('RGB')
         standardized_images.append(standardized_img)
 
@@ -140,11 +141,11 @@ def umap_visualization_and_spectral_clustering(dataset, output_filename, image_s
 
     # Saving images for each original cluster
     for cluster_number in range(n_clusters):
-        save_cluster_images(images, cluster_labels, cluster_number, os.path.join(IMG_DIR, 'clusters_original'), n=100)
+        save_cluster_images(images, cluster_labels, cluster_number, os.path.join(IMG_DIR, 'clusters_original'))
 
     # Saving images for each corrected cluster
     for cluster_number in range(n_clusters):
-        save_cluster_images(images, corrected_cluster_labels, cluster_number, os.path.join(IMG_DIR, 'clusters_corrected'), n=100)
+        save_cluster_images(images, corrected_cluster_labels, cluster_number, os.path.join(IMG_DIR, 'clusters_corrected'))
 
     return corrected_cluster_labels  # In case you want to use the labels later
 
@@ -223,7 +224,7 @@ def random_grayscale(image: Image.Image, probability: float = 0.1) -> Image.Imag
 
 def generate_augmentations(image: Image.Image):
     image_hf = random_horizontal_flip(image, 1) # horizontal flipped
-    image_gr = random_grayscale(image, 1) # greyscale
+    image_gr = random_grayscale(image, 1) # grayscale
     image_hf_gr = random_horizontal_flip(image_gr, 1)
     params_lists = [[0, 0, 0], [0, 0, 1], [0, 1, 0], [0, 1, 1],
                     [1, 0, 0], [1, 0, 1], [1, 1, 0], [1, 1, 1]]
