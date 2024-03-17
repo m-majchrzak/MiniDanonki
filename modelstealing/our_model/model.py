@@ -77,7 +77,7 @@ class Model(abc.ABC):
         )
 
     def _train_epoch(self, train_loader, optimizer, criterion) -> float:
-        self.model.train()
+        self.model.train_contrastive_with_mse()
 
         # Initialize the running loss and accuracy
         running_loss = 0.0
@@ -141,6 +141,68 @@ class Model(abc.ABC):
             }
 
             # Print the epoch results
+            self.logger.info(f'Epoch [{epoch}/{params.num_epochs}]: {train_metrics_str}')
+
+            if tag_to_save:
+                self.export_to_onxx(tag_to_save, epoch)
+                self.append_metrics(tag_to_save, metric_to_save)
+
+    def train_contrastive_with_mse(self, trainset: OurDataset, params: TrainingParams,
+                               tag_to_save: str | None = None) -> None:
+        """
+        Train model using a contrastive learning approach with MSE Loss
+        :param trainset: OurDataset object for training set
+        :param params: TrainingParams object
+        :param tag_to_save: training tag to save under after each epoch if not None, if None then will not save
+        """
+        if self.model is None:
+            raise ValueError("Model is not initialized properly")
+
+        self.logger.info(f"Starting contrastive training model with MSE loss {self.name}")
+        self.logger.info(f"Training set len: {len(trainset)}")
+        train_loader = trainset.get_dataloader_contrastive(batch_size=params.batch_size)
+
+        device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        self.logger.info(f"Device that will be used: {device}")
+        self.model.to(device)
+
+        criterion = torch.nn.MSELoss()  # Using MSELoss for contrastive training
+        optimizer = torch.optim.Adam(self.model.parameters(), lr=params.learning_rate, weight_decay=params.weight_decay)
+
+        for epoch in range(params.num_epochs):
+            self.model.train()
+
+            running_loss = 0.0
+            total_samples = 0
+
+            for inputs1, inputs2, labels in train_loader:
+                inputs1, inputs2, labels = inputs1.to(device), inputs2.to(device), labels.float().to(device)  # Make sure labels are floats
+
+                optimizer.zero_grad()
+
+                outputs1 = self.model(inputs1)
+                outputs2 = self.model(inputs2)
+                
+                # Calculate the mean squared error between the outputs as a measure of similarity
+                loss = criterion(outputs1, outputs2)
+
+                # In the case of contrastive learning, you may need to adjust how you interpret 'labels' with MSE Loss
+                # For example, you might need to define what 'similar' (1) and 'dissimilar' (0) mean in terms of MSE.
+                # Below, I assume 'labels' indicate similarity (1 = similar, 0 = dissimilar), and hence adjust the loss accordingly:
+                adjusted_loss = torch.mean(labels * loss + (1 - labels) * torch.clamp(1 - loss, min=0.0))
+
+                adjusted_loss.backward()
+                optimizer.step()
+
+                running_loss += adjusted_loss.item() * inputs1.size(0)
+                total_samples += inputs1.size(0)
+
+            train_loss = running_loss / total_samples  # total loss divided by total number of samples
+            train_metrics_str = f"train contrastive MSE loss: {train_loss:.4f}"
+            metric_to_save = {
+                "epoch": epoch, "train contrastive MSE loss": f"{train_loss:.4f}",
+            }
+
             self.logger.info(f'Epoch [{epoch}/{params.num_epochs}]: {train_metrics_str}')
 
             if tag_to_save:
