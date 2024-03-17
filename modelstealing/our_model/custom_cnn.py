@@ -1,11 +1,10 @@
 from modelstealing.our_model.model import Model
 
-from torchvision.models import alexnet
 import torch
 import torch.nn as nn
 
 class CustomNet(nn.Module):
-    def __init__(self, num_classes=10):  # Zmień to zgodnie z liczbą swoich klas.
+    def __init__(self):
         super(CustomNet, self).__init__()
         self.features = nn.Sequential(
             # Wejście: 3 x 32 x 32
@@ -29,23 +28,18 @@ class CustomNet(nn.Module):
         self.avgpool = nn.AdaptiveAvgPool2d((4, 4))
         # Po tej warstwie, tensor będzie miał rozmiar: 32 x 4 x 4, co daje 512 po spłaszczeniu.
 
-        self.classifier = nn.Sequential(
-            nn.Dropout(),
-            nn.Linear(32 * 4 * 4, num_classes),
-        )
-
     def forward(self, x):
         x = self.features(x)
         x = self.avgpool(x)
         x = torch.flatten(x, 1)
-        x = self.classifier(x)
         return x
 
 
-class Alexnet(Model):
+class CustomCNN(Model):
 
     def initialize_model(self) -> None:
+        self.model = CustomNet()
 
     @property
     def name(self) -> str:
-        return "alexnet"
+        return "CustomCNN"
