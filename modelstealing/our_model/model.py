@@ -77,7 +77,7 @@ class Model(abc.ABC):
         )
 
     def _train_epoch(self, train_loader, optimizer, criterion) -> float:
-        self.model.train_contrastive_with_mse()
+        #self.model.train_contrastive_with_mse()
 
         # Initialize the running loss and accuracy
         running_loss = 0.0
