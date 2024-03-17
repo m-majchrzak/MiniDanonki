@@ -39,6 +39,7 @@ class CustomCNN(Model):
 
     def initialize_model(self) -> None:
         self.model = CustomNet()
+        self.model.to(self.device)
 
     @property
     def name(self) -> str:
