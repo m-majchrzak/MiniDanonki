@@ -29,7 +29,7 @@ class OurDataset(Dataset):
         for image_name in all_images:
             repr_path = self.path_organizer.get_image_representation_path(image_name)
             if repr_path:
-                self.logger.info(f"Loading image {image_name} with repr: {repr_path}")
+                #self.logger.info(f"Loading image {image_name} with repr: {repr_path}")
                 img_path = self.path_organizer.get_image_path(image_name)
                 self.images.append(img_path)
                 self.labels.append(repr_path)
