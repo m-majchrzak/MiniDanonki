@@ -68,20 +68,19 @@ class Model(abc.ABC):
     def export_to_onxx(self, tag: str, epoch: int) -> None:
         path_to = self.path_organizer.get_onnx_model_path(self.name, tag, epoch)
         FsTools.ensure_dir(path_to)
+        dummy_input = torch.randn(1, 3, 32, 32)
+        dummy_input.to(self.device)
         torch.onnx.export(
             self.model,
-            torch.randn(1, 3, 32, 32),
+            dummy_input,
             path_to,
             export_params=True,
             input_names=["x"],
         )
 
     def _train_epoch(self, train_loader, optimizer, criterion) -> float:
-        #self.model.train_contrastive_with_mse()
-
         # Initialize the running loss and accuracy
         running_loss = 0.0
-        running_corrects = 0
         total_samples = 0
 
         # Iterate over the batches of the train loader
