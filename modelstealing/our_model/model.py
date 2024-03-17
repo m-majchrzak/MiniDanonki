@@ -5,6 +5,8 @@ import json
 from dataclasses import dataclass
 from typing import Any
 
+import torch
+
 from modelstealing.our_dataset import OurDataset
 from tools.fs_tools import FsTools
 from tools.logger import get_logger
@@ -49,6 +51,12 @@ class Model(abc.ABC):
         self.path_organizer = PathOrganizer(prefix)
 
         self.model: torch.nn.Module | None = None
+
+    @abc.abstractmethod
+    def initialize_model(self) -> None:
+        """
+        initializuje model
+        """
 
     @property
     @abc.abstractmethod
@@ -116,13 +124,13 @@ class Model(abc.ABC):
 
         self.logger.info(f"Starting training model {self.name}")
         self.logger.info(f"Training set len: {len(trainset)}")
-        train_loader = trainset.get_dataloader(batch_size=params.batch_size)
+        train_loader = trainset.get_dataloader_standard(batch_size=params.batch_size)
 
         device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         self.logger.info(f"Device that will be used: {device}")
         self.model.to(device)
 
-        criterion = torch.nn.torch.nn.MSELoss()
+        criterion = torch.nn.MSELoss()
         optimizer = torch.optim.Adam(self.model.parameters(), lr=params.learning_rate, weight_decay=params.weight_decay)
 
         for epoch in range(params.num_epochs):
@@ -150,7 +158,3 @@ class Model(abc.ABC):
         FsTools.ensure_dir(metrics_path)
         with open(metrics_path, 'a') as file:
             file.write(str(epoch_metrics) + '\n')
-
-
-
-

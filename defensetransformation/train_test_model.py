@@ -37,7 +37,7 @@ class MLP(nn.Module):
         super().__init__()
 
         self.dense = nn.Sequential(
-            nn.Linear(192, 120),
+            nn.Linear(2003, 120),
             nn.ReLU(),
             nn.Linear(120, 84),
             nn.ReLU(),
@@ -128,7 +128,8 @@ def test_step(model: nn.Module, test_loader: DataLoader) -> np.ndarray:
     
 if __name__ == "__main__":
     data = np.load(
-        "defensetransformation/data/DefenseTransformationEvaluate.npz"
+        "defensetransformation/data/2003_combine_with_two_Evaluate.npz"
+        
     )
 
     #transform = transforms.Compose([transforms.ToTensor(), transforms.Normalize((0.5,), (0.5,))])
